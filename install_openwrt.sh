@@ -62,16 +62,16 @@ else
     # Determine correct Entware URL based on kernel version
     KERNEL_VERSION=$(uname -r | cut -d. -f1-2)
     case "$KERNEL_VERSION" in
-        6.1|6.6|6.12) ENTWARE_ARCH="aarch64-5.10" ;;
-        5.15|5.10)     ENTWARE_ARCH="aarch64-5.10" ;;
-        5.4)           ENTWARE_ARCH="aarch64-5.10" ;;
-        *)             ENTWARE_ARCH="aarch64-5.10" ;;
+        6.1|6.6|6.12) ENTWARE_ARCH="aarch64-k3.10" ;;
+        5.15|5.10)     ENTWARE_ARCH="aarch64-k3.10" ;;
+        5.4)           ENTWARE_ARCH="aarch64-k3.10" ;;
+        *)             ENTWARE_ARCH="aarch64-k3.10" ;;
     esac
-    ENTWARE_URL="https://bin.entware.net/${ENTWARE_ARCH}/installer/entware_install.sh"
+    ENTWARE_URL="https://bin.entware.net/${ENTWARE_ARCH}/installer/generic.sh"
     echo -e "${YELLOW}  Using Entware URL: ${ENTWARE_URL}${NC}"
-    wget -O entware_install.sh "$ENTWARE_URL"
-    chmod +x entware_install.sh
-    sh entware_install.sh
+    wget -O generic.sh "$ENTWARE_URL"
+    chmod +x generic.sh
+    sh generic.sh
     
     echo -e "${GREEN}✓ Entware installed${NC}"
 fi
