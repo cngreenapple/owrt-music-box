@@ -59,7 +59,17 @@ else
 
     # Download and run Entware installer
     cd /tmp
-    wget -O entware_install.sh https://bin.entware.net/aarch64k3.10/installer/entware_install.sh
+    # Determine correct Entware URL based on kernel version
+    KERNEL_VERSION=$(uname -r | cut -d. -f1-2)
+    case "$KERNEL_VERSION" in
+        6.1|6.6|6.12) ENTWARE_ARCH="aarch64-5.10" ;;
+        5.15|5.10)     ENTWARE_ARCH="aarch64-5.10" ;;
+        5.4)           ENTWARE_ARCH="aarch64-5.10" ;;
+        *)             ENTWARE_ARCH="aarch64-5.10" ;;
+    esac
+    ENTWARE_URL="https://bin.entware.net/${ENTWARE_ARCH}/installer/entware_install.sh"
+    echo -e "${YELLOW}  Using Entware URL: ${ENTWARE_URL}${NC}"
+    wget -O entware_install.sh "$ENTWARE_URL"
     chmod +x entware_install.sh
     sh entware_install.sh
     
@@ -175,30 +185,58 @@ echo -e "${YELLOW}[7/8] Setting up OWRT-MUSIC-BOX...${NC}"
 
 APP_DIR="/opt/owrt-music-box"
 
-# Create directories
-mkdir -p "$APP_DIR"
-mkdir -p "$APP_DIR/static/covers"
-mkdir -p "$APP_DIR/static/css"
-mkdir -p "$APP_DIR/static/img"
-mkdir -p "$APP_DIR/static/js"
-mkdir -p "$APP_DIR/static/webfonts"
-mkdir -p "$APP_DIR/templates"
+# Determine script directory (where this script is running from)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Download project files
-cd "$APP_DIR"
-# Download from the GitHub repo
-wget -q "https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/app.py" -O app.py
-wget -q "https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/library.py" -O library.py
-wget -q "https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/bt_manager.py" -O bt_manager.py
-wget -q "https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/requirements.txt" -O requirements.txt
-wget -q "https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/get_assets.py" -O get_assets.py
-
-# Download static files
-wget -q "https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/static/manifest.json" -O static/manifest.json
-wget -q "https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/static/sw.js" -O static/sw.js
-wget -q "https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/static/css/style.css" -O static/css/style.css 2>/dev/null || true
-wget -q "https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/static/js/app.js" -O static/js/app.js 2>/dev/null || true
-wget -q "https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/templates/index.html" -O templates/index.html 2>/dev/null || true
+# Copy project files - prefer local files (from git clone), fallback to download
+if [ -f "$SCRIPT_DIR/app.py" ] && [ -f "$SCRIPT_DIR/library.py" ]; then
+    echo -e "${GREEN}  Copying files from local directory: ${SCRIPT_DIR}${NC}"
+    
+    # Copy Python files
+    cp "$SCRIPT_DIR/app.py" "$APP_DIR/app.py"
+    cp "$SCRIPT_DIR/library.py" "$APP_DIR/library.py"
+    cp "$SCRIPT_DIR/bt_manager.py" "$APP_DIR/bt_manager.py" 2>/dev/null || true
+    
+    # Copy shell scripts
+    cp "$SCRIPT_DIR/play.sh" "$APP_DIR/play.sh" 2>/dev/null || true
+    cp "$SCRIPT_DIR/toggle_output.sh" "$APP_DIR/toggle_output.sh" 2>/dev/null || true
+    
+    # Copy static assets
+    cp -r "$SCRIPT_DIR/static/css"/* "$APP_DIR/static/css/" 2>/dev/null || true
+    cp -r "$SCRIPT_DIR/static/js"/* "$APP_DIR/static/js/" 2>/dev/null || true
+    cp -r "$SCRIPT_DIR/static/img"/* "$APP_DIR/static/img/" 2>/dev/null || true
+    cp -r "$SCRIPT_DIR/static/webfonts"/* "$APP_DIR/static/webfonts/" 2>/dev/null || true
+    cp "$SCRIPT_DIR/static/manifest.json" "$APP_DIR/static/manifest.json" 2>/dev/null || true
+    cp "$SCRIPT_DIR/static/sw.js" "$APP_DIR/static/sw.js" 2>/dev/null || true
+    
+    # Copy templates
+    cp "$SCRIPT_DIR/templates/index.html" "$APP_DIR/templates/index.html" 2>/dev/null || true
+    
+    echo -e "${GREEN}  Local files copied successfully${NC}"
+else
+    echo -e "${YELLOW}  Local project files not found, downloading from GitHub...${NC}"
+    
+    cd "$APP_DIR"
+    GITHUB_BASE="https://raw.githubusercontent.com/cngreenapple/owrt-music-box/main"
+    
+    # Download Python files
+    wget -q "$GITHUB_BASE/app.py" -O app.py
+    wget -q "$GITHUB_BASE/library.py" -O library.py
+    wget -q "$GITHUB_BASE/bt_manager.py" -O bt_manager.py
+    
+    # Download shell scripts
+    wget -q "$GITHUB_BASE/play.sh" -O play.sh
+    wget -q "$GITHUB_BASE/toggle_output.sh" -O toggle_output.sh
+    
+    # Download static files
+    wget -q "$GITHUB_BASE/static/manifest.json" -O static/manifest.json
+    wget -q "$GITHUB_BASE/static/sw.js" -O static/sw.js
+    wget -q "$GITHUB_BASE/static/css/style.css" -O static/css/style.css 2>/dev/null || true
+    wget -q "$GITHUB_BASE/static/js/script.js" -O static/js/script.js 2>/dev/null || true
+    wget -q "$GITHUB_BASE/templates/index.html" -O templates/index.html 2>/dev/null || true
+    
+    echo -e "${GREEN}  Files downloaded from GitHub${NC}"
+fi
 
 # Create play.sh with Entware paths
 cat > "$APP_DIR/play.sh" << 'PLAYEOF'
@@ -1171,8 +1209,9 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=2027, debug=False)
 APPEOF
 
-# Create empty placeholder templates
-cat > "$APP_DIR/templates/index.html" << 'HTMLEOF'
+# Create default index.html as fallback if template was not copied
+if [ ! -f "$APP_DIR/templates/index.html" ]; then
+    cat > "$APP_DIR/templates/index.html" << 'HTMLEOF'
 <!DOCTYPE html>
 <html>
 <head>
@@ -1187,11 +1226,12 @@ cat > "$APP_DIR/templates/index.html" << 'HTMLEOF'
 </head>
 <body>
     <h1>OWRT-MUSIC-BOX</h1>
-    <p class="loading">Loading Web UI... (Download index.html from GitHub)</p>
-    <p>Run <code>wget -q https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/templates/index.html -O /opt/owrt-music-box/templates/index.html</code> from SSH.</p>
+    <p class="loading">Web UI is loading...</p>
+    <p>If this page persists, re-run: <code>./install_openwrt.sh</code> from the cloned repo.</p>
 </body>
 </html>
 HTMLEOF
+fi
 
 # Create D-Bus config for bluealsa
 mkdir -p /opt/owrt-music-box/dbus
@@ -1328,9 +1368,7 @@ echo -e "${YELLOW}First run:${NC}"
 echo "  Reboot your router, or just run:"
 echo "  ${GREEN}/etc/init.d/entware start && /etc/init.d/owrt-music-box start${NC}"
 echo ""
-echo -e "${YELLOW}NOTE: If Web UI shows placeholder, download assets:${NC}"
-echo "  cd /opt/owrt-music-box && wget -q https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/get_assets.py -O get_assets.py && /opt/bin/python3 get_assets.py"
-echo "  Or download index.html manually:"
-echo "  wget -q https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/templates/index.html -O /opt/owrt-music-box/templates/index.html"
-echo "  wget -q https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/static/css/style.css -O /opt/owrt-music-box/static/css/style.css"
-echo "  wget -q https://raw.githubusercontent.com/st4ngkudut/ST4-Player-OpenWrt/main/static/js/app.js -O /opt/owrt-music-box/static/js/app.js"
+echo -e "${YELLOW}Troubleshooting:${NC}"
+echo "  If Web UI doesn't load, restart the service:"
+echo "  ${GREEN}/etc/init.d/owrt-music-box restart${NC}"
+echo "  Check logs: ${GREEN}cat /opt/owrt-music-box/mpv_error.log${NC}"

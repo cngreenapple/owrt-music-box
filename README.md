@@ -33,14 +33,16 @@ Turn your OpenWrt Router/STB (Amlogic S905X, aarch64) into a High-End, Bit-Perfe
 SSH into your OpenWrt device and run:
 
 ```bash
-# Download the installer
-cd /tmp
-wget -q https://raw.githubusercontent.com/cngreenapple/owrt-music-box/main/install_openwrt.sh
+# 1. Install git (if not already installed)
+opkg update
+opkg install git git-http ca-certificates
 
-# Make it executable
+# 2. Clone the repository
+git clone https://github.com/cngreenapple/owrt-music-box.git
+cd owrt-music-box
+
+# 3. Run the installer (takes 5-15 minutes)
 chmod +x install_openwrt.sh
-
-# Run the installer (takes 5-15 minutes)
 ./install_openwrt.sh
 ```
 
@@ -48,9 +50,10 @@ The script will:
 1. Install **Entware** package manager to `/opt`
 2. Install **mpv**, **ffmpeg**, **bluez-alsa**, **alsa-utils**, **Python 3**, **socat**
 3. Install Python packages: **flask**, **ytmusicapi**, **mutagen**, **yt-dlp**
-4. Deploy **OWRT-MUSIC-BOX** files to `/opt/owrt-music-box/`
-5. Configure **D-Bus** policy for bluealsa
-6. Create init script `/etc/init.d/owrt-music-box` (auto-start on boot)
+4. Copy all files from the cloned repo to **`/opt/owrt-music-box/`**
+5. Create **play.sh** and **app.py** with Entware-compatible paths
+6. Configure **D-Bus** policy for bluealsa
+7. Create init script `/etc/init.d/owrt-music-box` (auto-start on boot)
 
 ### After Installation
 
