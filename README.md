@@ -1,134 +1,125 @@
-# 🎵 ST4-PLAYER: Audiophile-Grade Music Server for OpenWrt
+# 🎵 OWRT-MUSIC-BOX
 
-Turn your idle OpenWrt Router or Set-Top Box (STB) into a High-End, Bit-Perfect Music Streamer. 
+Audiophile-Grade Music Server for **OpenWrt** — No Docker required.
 
-ST4-PLAYER is a lightweight, Dockerized music player tailored specifically for OpenWrt environments. It bypasses the standard Linux audio resampling, delivering pure, untouched audio data directly to your USB DAC. Combined with seamless Bluetooth A2DP support and a smart local library manager, it's the ultimate audio engine for your homelab.
-
----
-
-## ✨ Key Features
-
-* 🎧 **Bit-Perfect Audio Output:** Delivers pure, untouched digital audio (e.g., 24-bit/96kHz) directly to your USB DAC (like JadeAudio JA11) without system resampling.
-* 📡 **Bluetooth A2DP Support:** Custom integrated `bluealsa` allows seamless pairing and streaming to your TWS or Bluetooth Speakers right from the Web UI.
-* 🗂️ **Smart Background Scanner:** Asynchronous deep-scanning of your internal/external HDDs (`/mnt`). Automatically extracts ID3 tags (Title, Artist, Album) using `mutagen` and stores them in a lightning-fast SQLite WAL-mode database. Resilient against corrupted files.
-* 🌐 **Responsive Web UI:** Control your playback, manage queues, browse folders, and pair Bluetooth devices from any browser.
-* ☁️ **YouTube Music & Lyrics API:** Integrated with `ytmusicapi` for cloud streaming and `LRCLIB` for real-time synced lyrics.
-* 🐳 **Fully Dockerized:** Runs in an isolated, lightweight Debian container, keeping your OpenWrt host perfectly clean.
+Turn your OpenWrt Router/STB (Amlogic S905X, aarch64) into a High-End, Bit-Perfect Music Streamer. Uses **Entware** to install mpv, bluealsa, ffmpeg, and Python directly on your router.
 
 ---
 
-## 🛠️ Prerequisites
+## ✨ Features
 
-1.  **Hardware:** An OpenWrt Router/STB with a USB port.
-2.  **Audio Output:** A USB DAC (Digital-to-Analog Converter) or a Bluetooth Audio Device.
-3.  **Software:** OpenWrt with Internet access.
+- 🎧 **Bit-Perfect Audio Output** — Direct USB DAC support without system resampling
+- 📡 **Bluetooth A2DP** — Stream to TWS/Speakers via bluealsa + Web UI
+- 🗂️ **Local Library Scanner** — Auto-scan HDD/USB, extract ID3 tags via mutagen, store in SQLite
+- 🌐 **Responsive Web UI** — Control playback, manage queues, browse files, pair Bluetooth from any browser
+- ☁️ **YouTube Music & Lyrics** — Search & stream from YT Music, synced lyrics from LRCLIB
+- 🐳 **No Docker** — Runs natively on OpenWrt via Entware (lightweight, direct hardware access)
+- 🎛️ **16-Band EQ + Crossfeed + Balance** — lavfi-based DSP filters via mpv
 
 ---
 
-## 🚀 Installation Guide
+## 📋 Requirements
 
-### Step 0: Install OpenWrt Dependencies
-Before running anything, make sure your OpenWrt host has the necessary hardware drivers and tools installed. Run this in your OpenWrt SSH terminal:
+- **Hardware:** OpenWrt Router/STB with **aarch64** CPU (e.g. Amlogic S905X, S905Y, S922X, RK3328, RK3399)
+- **RAM:** ≥512MB (1GB+ recommended)
+- **Storage:** ~500MB free on internal disk (or USB flash)
+- **Audio:** USB DAC or Bluetooth A2DP device
+- **OS:** OpenWrt 23.05+ / 24.10+ with kernel ≥5.10
+
+---
+
+## 🚀 Installation
+
+SSH into your OpenWrt device and run:
 
 ```bash
-opkg update
-opkg install kmod-usb-audio bluez-daemon dockerd docker docker-compose git git-http
-```
-**What are these for?**
-* `kmod-usb-audio`: Essential kernel module to detect your USB DAC.
-* `bluez-daemon`: The core Bluetooth service for the host.
-* `dockerd` & `docker-compose`: To run and manage the ST4-PLAYER container.
-* `git` & `git-http`: To clone this repository from GitHub.
+# Download the installer
+cd /tmp
+wget -q https://raw.githubusercontent.com/cngreenapple/owrt-music-box/main/install_openwrt.sh
 
-Make sure to start and enable the services after installation:
-```bash
-/etc/init.d/dockerd enable && /etc/init.d/dockerd start
-/etc/init.d/bluetoothd enable && /etc/init.d/bluetoothd start
+# Make it executable
+chmod +x install_openwrt.sh
+
+# Run the installer (takes 5-15 minutes)
+./install_openwrt.sh
 ```
 
-### Step 1: Host Preparation (CRITICAL FOR BLUETOOTH)
-Because Docker containers are isolated, OpenWrt's security policy (D-Bus) will block the container from routing audio to Bluetooth devices. You **must** create a policy to allow `bluealsa` to communicate with the host's Bluetooth daemon.
+The script will:
+1. Install **Entware** package manager to `/opt`
+2. Install **mpv**, **ffmpeg**, **bluez-alsa**, **alsa-utils**, **Python 3**, **socat**
+3. Install Python packages: **flask**, **ytmusicapi**, **mutagen**, **yt-dlp**
+4. Deploy **OWRT-MUSIC-BOX** files to `/opt/owrt-music-box/`
+5. Configure **D-Bus** policy for bluealsa
+6. Create init script `/etc/init.d/owrt-music-box` (auto-start on boot)
 
-Run this directly on your **OpenWrt Host Terminal (SSH)** (NOT inside Docker):
-
-```bash
-# 1. Create D-Bus permission for Docker's bluealsa
-cat << 'EOF' > /etc/dbus-1/system.d/bluealsa.conf
-<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN" "[http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd](http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd)">
-<busconfig>
-  <policy user="root">
-    <allow own="org.bluealsa"/>
-    <allow send_destination="org.bluealsa"/>
-  </policy>
-  <policy context="default">
-    <allow send_destination="org.bluealsa"/>
-  </policy>
-</busconfig>
-EOF
-
-# 2. Reload services to apply changes
-/etc/init.d/dbus reload
-/etc/init.d/bluetoothd restart
-```
-
-### Step 2: Clone & Build the Container
-Now, clone this repository and fire up Docker Compose.
+### After Installation
 
 ```bash
-git clone https://github.com/st4ngkudut/ST4-Player-OpenWrt.git
-cd ST4-Player-OpenWrt
+# Start the service
+/etc/init.d/owrt-music-box start
 
-# Build the image and run in detached mode
-docker-compose up -d --build
+# Or reboot to start everything automatically
+reboot
 ```
 
-> **Note:** The `docker-compose.yml` mounts `/dev/snd` and `/var/run/dbus` which are absolutely necessary for hardware ALSA access and Bluetooth functionality.
+### Access the Web UI
+
+```
+http://192.168.1.178:2027
+```
 
 ---
 
-## 🖥️ OpenWrt LuCI Integration (Optional but Recommended)
-
-Want to access ST4-PLAYER directly from your OpenWrt admin panel? Run this snippet on your OpenWrt SSH to create a dedicated top-level menu in LuCI:
+## 🛠️ Manual Service Control
 
 ```bash
-cat <<'EOF' >/usr/lib/lua/luci/controller/st4player.lua
-module("luci.controller.st4player", package.seeall)
-function index()
-    entry({"admin", "st4player"}, template("st4player"), _("ST4-PLAYER"), 90).leaf=true
-end
-EOF
-
-cat <<'EOF' >/usr/lib/lua/luci/view/st4player.htm
-<%+header%>
-<div class="cbi-map">
-    <iframe id="st4player" style="width: 100%; min-height: 90vh; border: none; border-radius: 2px;"></iframe>
-</div>
-<script type="text/javascript">
-    document.getElementById("st4player").src = window.location.protocol + "//" + window.location.hostname + ":5000";
-</script>
-<%+footer%>
-EOF
-
-# Clear LuCI cache
-rm -rf /tmp/luci-*
+/etc/init.d/owrt-music-box start     # Start the server
+/etc/init.d/owrt-music-box stop      # Stop
+/etc/init.d/owrt-music-box restart   # Restart
+/etc/init.d/owrt-music-box enable    # Enable auto-start (default)
+/etc/init.d/owrt-music-box disable   # Disable auto-start
 ```
-Refresh your LuCI Web Interface, and you will see the **ST4-PLAYER** tab right next to System and Network!
 
 ---
 
-## 📖 Usage
+## 📁 Directory Structure
 
-1.  **Accessing:** Open `http://<your-router-ip>:5000` or use the LuCI menu.
-2.  **Scanning Library:** Go to the File Manager, navigate to your external HDD mount point (e.g., `/mnt/sda1/Music`), and click **Scan**. Let it run in the background.
-3.  **Bluetooth Pairing:** Ensure your TWS/Speaker is in pairing mode. Go to the Bluetooth tab, click **Scan**, and hit **Connect**. The system handles the Agent, Pair, Trust, and A2DP routing automatically.
+```
+/opt/owrt-music-box/
+├── app.py              # Flask backend (port 2027)
+├── library.py          # Music library scanner (SQLite)
+├── bt_manager.py       # Bluetooth helper
+├── play.sh             # mpv launcher script
+├── toggle_output.sh    # Audio output switcher
+├── dbus/
+│   └── bluealsa.conf   # D-Bus policy for bluealsa
+├── static/
+│   ├── css/            # Web UI styles
+│   ├── js/             # Web UI scripts
+│   ├── img/            # Icons & default cover
+│   ├── webfonts/       # Font Awesome icons
+│   ├── manifest.json   # PWA manifest
+│   └── sw.js           # Service worker
+└── templates/
+    └── index.html      # Web UI main page
+```
 
 ---
 
-## ⚙️ Tech Stack
-* **Backend:** Python 3.11 (Flask)
-* **Audio Engine:** MPV & BlueALSA
-* **Database:** SQLite3 (WAL Mode for high concurrency)
-* **Metadata:** Mutagen
+## 🔧 Tech Stack
+
+| Component | Package | Notes |
+|---|---|---|
+| **Audio Engine** | `mpv` | via Entware |
+| **Bluetooth A2DP** | `bluez-alsa` | D-Bus policy configured |
+| **Backend** | Python 3 + Flask | Port 2027 |
+| **Audio Processing** | ffmpeg | Cover extraction, metadata |
+| **Database** | SQLite | WAL mode for concurrency |
+| **Metadata** | mutagen | ID3 tag parsing |
+| **YouTube Music** | ytmusicapi + yt-dlp | Streaming & search |
+
+---
 
 ## 📝 License
-This project is open-source and available under the MIT License. Feel free to fork, modify, and build upon it!
+
+MIT License — feel free to fork, modify, and improve.
