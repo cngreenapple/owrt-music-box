@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.sqlite3
+*.sqlite
+.env
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Music Box runtime
+static/covers/
+mpv_error.log
+last_volume
+output_mode
+bp_mode
+default_path.txt
+playlist.json
