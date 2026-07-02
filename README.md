@@ -2,28 +2,25 @@
 
 Audiophile-Grade Music Server for **OpenWrt** — No Docker required.
 
-Turn your OpenWrt Router/STB (Amlogic S905X, aarch64) into a High-End, Bit-Perfect Music Streamer. Uses **Entware** to install mpv, bluealsa, ffmpeg, and Python directly on your router.
+Turn your OpenWrt Router/STB (Amlogic S905X, aarch64) into a Music Streamer. Uses **Entware** to install Python, ffmpeg, and ALSA tools directly on your router.
 
 ---
 
 ## ✨ Features
 
-- 🎧 **Bit-Perfect Audio Output** — Direct USB DAC support without system resampling
-- 📡 **Bluetooth A2DP** — Stream to TWS/Speakers via bluealsa + Web UI
+- 🌐 **Responsive Web UI** — Control playback, manage queues, browse files from any browser
 - 🗂️ **Local Library Scanner** — Auto-scan HDD/USB, extract ID3 tags via mutagen, store in SQLite
-- 🌐 **Responsive Web UI** — Control playback, manage queues, browse files, pair Bluetooth from any browser
 - ☁️ **YouTube Music & Lyrics** — Search & stream from YT Music, synced lyrics from LRCLIB
 - 🐳 **No Docker** — Runs natively on OpenWrt via Entware (lightweight, direct hardware access)
-- 🎛️ **16-Band EQ + Crossfeed + Balance** — lavfi-based DSP filters via mpv
+- 📡 **Bluetooth** — Scan & pair devices via bluetoothctl
 
 ---
 
 ## 📋 Requirements
 
-- **Hardware:** OpenWrt Router/STB with **aarch64** CPU (e.g. Amlogic S905X, S905Y, S922X, RK3328, RK3399)
+- **Hardware:** OpenWrt Router/STB with **aarch64** CPU (e.g. Amlogic S905X)
 - **RAM:** ≥512MB (1GB+ recommended)
-- **Storage:** ~500MB free on internal disk (or USB flash)
-- **Audio:** USB DAC or Bluetooth A2DP device
+- **Storage:** ~400MB free on internal disk
 - **OS:** OpenWrt 23.05+ / 24.10+ with kernel ≥5.10
 
 ---
@@ -33,7 +30,7 @@ Turn your OpenWrt Router/STB (Amlogic S905X, aarch64) into a High-End, Bit-Perfe
 SSH into your OpenWrt device and run:
 
 ```bash
-# 1. Install git (if not already installed)
+# 1. Install git
 opkg update
 opkg install git git-http ca-certificates
 
@@ -46,41 +43,39 @@ chmod +x install_openwrt.sh
 ./install_openwrt.sh
 ```
 
-The script will:
-1. Install **Entware** package manager to `/opt`
-2. Install **mpv**, **ffmpeg**, **bluez-alsa**, **alsa-utils**, **Python 3**, **socat**
-3. Install Python packages: **flask**, **ytmusicapi**, **mutagen**, **yt-dlp**
-4. Copy all files from the cloned repo to **`/opt/owrt-music-box/`**
-5. Create **play.sh** and **app.py** with Entware-compatible paths
-6. Configure **D-Bus** policy for bluealsa
-7. Create init script `/etc/init.d/owrt-music-box` (auto-start on boot)
-
 ### After Installation
 
 ```bash
 # Start the service
 /etc/init.d/owrt-music-box start
 
-# Or reboot to start everything automatically
-reboot
-```
-
-### Access the Web UI
-
-```
+# Access Web UI
 http://192.168.1.178:2027
 ```
 
 ---
 
-## 🛠️ Manual Service Control
+## 🎵 Installing mpv (Audio Player)
 
+**mpv is NOT available in Entware aarch64 repository.** The Web UI will start without it, but audio playback needs mpv.
+
+### Option 1: Try to download a static binary
 ```bash
-/etc/init.d/owrt-music-box start     # Start the server
-/etc/init.d/owrt-music-box stop      # Stop
-/etc/init.d/owrt-music-box restart   # Restart
-/etc/init.d/owrt-music-box enable    # Enable auto-start (default)
-/etc/init.d/owrt-music-box disable   # Disable auto-start
+# Try downloading a static mpv build for aarch64
+wget -q -O /opt/bin/mpv https://github.com/nickcz/mpv-linux-aarch64/releases/latest/download/mpv
+chmod +x /opt/bin/mpv
+/etc/init.d/owrt-music-box restart
+```
+
+### Option 2: Use mpg123 for basic MP3 playback
+```bash
+/opt/bin/opkg install mpg123
+```
+
+### Option 3: Compile from source (advanced)
+```bash
+/opt/bin/opkg install gcc make
+# Clone mpv and compile (requires ~300MB space)
 ```
 
 ---
@@ -92,17 +87,9 @@ http://192.168.1.178:2027
 ├── app.py              # Flask backend (port 2027)
 ├── library.py          # Music library scanner (SQLite)
 ├── bt_manager.py       # Bluetooth helper
-├── play.sh             # mpv launcher script
+├── play.sh             # Audio player launcher
 ├── toggle_output.sh    # Audio output switcher
-├── dbus/
-│   └── bluealsa.conf   # D-Bus policy for bluealsa
-├── static/
-│   ├── css/            # Web UI styles
-│   ├── js/             # Web UI scripts
-│   ├── img/            # Icons & default cover
-│   ├── webfonts/       # Font Awesome icons
-│   ├── manifest.json   # PWA manifest
-│   └── sw.js           # Service worker
+├── static/             # Web UI assets
 └── templates/
     └── index.html      # Web UI main page
 ```
@@ -111,18 +98,19 @@ http://192.168.1.178:2027
 
 ## 🔧 Tech Stack
 
-| Component | Package | Notes |
+| Component | Source | Notes |
 |---|---|---|
-| **Audio Engine** | `mpv` | via Entware |
-| **Bluetooth A2DP** | `bluez-alsa` | D-Bus policy configured |
-| **Backend** | Python 3 + Flask | Port 2027 |
-| **Audio Processing** | ffmpeg | Cover extraction, metadata |
-| **Database** | SQLite | WAL mode for concurrency |
-| **Metadata** | mutagen | ID3 tag parsing |
-| **YouTube Music** | ytmusicapi + yt-dlp | Streaming & search |
+| **Backend** | Python 3 + Flask | via Entware |
+| **Audio (optional)** | mpv / mpg123 | Manual install |
+| **Bluetooth** | bluez-daemon + bluez-utils | via Entware |
+| **FFmpeg** | ffmpeg + ffprobe | via Entware |
+| **SQLite** | Python built-in | Music library DB |
+| **Metadata** | mutagen | via pip |
+| **YouTube Music** | ytmusicapi + yt-dlp | via pip |
+| **ALSA** | alsa-utils + alsa-lib | via Entware |
 
 ---
 
 ## 📝 License
 
-MIT License — feel free to fork, modify, and improve.
+MIT License

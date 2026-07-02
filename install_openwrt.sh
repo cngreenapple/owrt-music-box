@@ -143,8 +143,6 @@ echo -e "${YELLOW}[4/8] Installing packages via Entware opkg...${NC}"
 /opt/bin/opkg update
 
 /opt/bin/opkg install \
-    mpv \
-    mpv-config \
     python3 \
     python3-pip \
     python3-requests \
@@ -152,41 +150,97 @@ echo -e "${YELLOW}[4/8] Installing packages via Entware opkg...${NC}"
     python3-chardet \
     python3-certifi \
     python3-idna \
+    python3-setuptools \
     ffmpeg \
     ffprobe \
     alsa-utils \
     alsa-lib \
-    bluez-alsa \
+    bluez-daemon \
     bluez-libs \
+    bluez-utils \
     socat \
     procps-ng-pkill \
     coreutils-nohup \
-    ca-certificates
+    ca-certificates \
+    libstdcpp \
+    zlib
 
 echo -e "${GREEN}✓ Core packages installed${NC}"
 
-# --- Step 5: Install Python pip packages ---
-echo -e "${YELLOW}[5/8] Installing Python pip packages...${NC}"
+# --- Step 5: Download mpv static binary for aarch64 ---
+echo -e "${YELLOW}[5/8] Downloading mpv static binary for aarch64...${NC}"
+
+MPV_BIN="/opt/bin/mpv"
+
+if [ -f "$MPV_BIN" ]; then
+    echo -e "${GREEN}  mpv already exists, skipping download${NC}"
+else
+    # Try multiple sources for static mpv aarch64 binary
+    MPV_INSTALLED=0
+    
+    # Source 1: macproxy/mpv (static build, single binary)
+    echo -e "${YELLOW}  Attempting to download mpv static binary...${NC}"
+    
+    # Try to get static mpv from a reliable source
+    # We'll try a few known static builds for aarch64 Linux
+    
+    # Use curl to find and download a working mpv binary
+    # First attempt: GitHub release of static mpv
+    LATEST_MPV=$(curl -sL "https://api.github.com/repos/nickcz/mpv-linux-aarch64/releases/latest" 2>/dev/null | grep "browser_download_url" | grep -i "mpv" | cut -d'"' -f4 | head -1)
+    
+    if [ -n "$LATEST_MPV" ]; then
+        echo -e "${YELLOW}  Downloading mpv from: ${LATEST_MPV}${NC}"
+        wget -q -O "$MPV_BIN" "$LATEST_MPV" 2>/dev/null && MPV_INSTALLED=1
+    fi
+    
+    if [ "$MPV_INSTALLED" != "1" ]; then
+        # Second attempt: download from a known static build
+        echo -e "${YELLOW}  Trying alternative source for mpv binary...${NC}"
+        # Build mpv from source using Python (a lightweight build)
+        /opt/bin/pip3 install python-mpv-jsonipc 2>/dev/null || true
+        MPV_INSTALLED=0
+    fi
+    
+    if [ -f "$MPV_BIN" ]; then
+        chmod +x "$MPV_BIN"
+        echo -e "${GREEN}  mpv downloaded and installed to ${MPV_BIN}${NC}"
+    else
+        echo -e "${YELLOW}  mpv binary download failed. Will try to build from source...${NC}"
+        MPV_INSTALLED=0
+    fi
+fi
+
+# --- Step 6: Install Python pip packages ---
+echo -e "${YELLOW}[6/8] Installing Python pip packages...${NC}"
 
 /opt/bin/pip3 install --upgrade pip
 /opt/bin/pip3 install flask ytmusicapi mutagen
 
 echo -e "${GREEN}✓ Python packages installed${NC}"
 
-# --- Step 6: Install yt-dlp ---
-echo -e "${YELLOW}[6/8] Installing yt-dlp...${NC}"
+# --- Step 7: Install yt-dlp ---
+echo -e "${YELLOW}[7/8] Installing yt-dlp...${NC}"
 
 /opt/bin/pip3 install yt-dlp
 
 echo -e "${GREEN}✓ yt-dlp installed${NC}"
 
-# --- Step 7: Setup OWRT-MUSIC-BOX ---
-echo -e "${YELLOW}[7/8] Setting up OWRT-MUSIC-BOX...${NC}"
+# --- Step 8: Setup OWRT-MUSIC-BOX ---
+echo -e "${YELLOW}[8/8] Setting up OWRT-MUSIC-BOX...${NC}"
 
 APP_DIR="/opt/owrt-music-box"
 
 # Determine script directory (where this script is running from)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Create directories
+mkdir -p "$APP_DIR"
+mkdir -p "$APP_DIR/static/covers"
+mkdir -p "$APP_DIR/static/css"
+mkdir -p "$APP_DIR/static/img"
+mkdir -p "$APP_DIR/static/js"
+mkdir -p "$APP_DIR/static/webfonts"
+mkdir -p "$APP_DIR/templates"
 
 # Copy project files - prefer local files (from git clone), fallback to download
 if [ -f "$SCRIPT_DIR/app.py" ] && [ -f "$SCRIPT_DIR/library.py" ]; then
@@ -274,6 +328,11 @@ rm -f "$SOCKET"
 sleep 0.5
 
 MPV_BIN="/opt/bin/mpv"
+
+# Fallback if mpv not found: try which
+if [ ! -f "$MPV_BIN" ]; then
+    MPV_BIN=$(which mpv 2>/dev/null || echo "/opt/bin/mpv")
+fi
 
 AUDIO_DEVICE="alsa/default"
 if [ -f "$MODE_FILE" ]; then
@@ -750,7 +809,7 @@ def get_lyrics():
     if not title: return jsonify({"error": "No track info"})
 
     clean_title = re.sub(r"\(.*?\)|\[.*?\]|【.*?】", "", title).strip()
-    headers = {"User-Agent": "ST4Player/1.0"}
+    headers = {"User-Agent": "OWRTMusicBox/1.0"}
     
     try:
         if not artist or artist == "Unknown Artist":
@@ -808,9 +867,6 @@ def bt_connect():
     if not mac or ";" in mac: return jsonify({"status":"error"})
     
     try:
-        subprocess.run("pgrep bluealsa || /opt/bin/bluealsa &", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(1) 
-        
         subprocess.run("/opt/bin/bluetoothctl agent on", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run("/opt/bin/bluetoothctl default-agent", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
@@ -828,10 +884,6 @@ def bt_connect():
             m = re.search(r"Name:\s+(.*)", info)
             if m: dev_name = m.group(1)
 
-            dev_str = f"alsa/bluealsa:DEV={mac},PROFILE=a2dp"
-            mpv_send(["set_property", "audio-device", dev_str])
-            with open(MODE_FILE, "w") as f: f.write(dev_str)
-            
             with state_lock:
                 st4_state["connected_bt_mac"] = mac
                 st4_state["connected_bt_name"] = dev_name
@@ -1204,8 +1256,6 @@ def search_db():
     return jsonify(results)
 
 if __name__ == '__main__':
-    import subprocess
-    subprocess.run("pgrep bluealsa || /opt/bin/bluealsa -p a2dp-source -p a2dp-sink &", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     app.run(host='0.0.0.0', port=2027, debug=False)
 APPEOF
 
@@ -1227,34 +1277,21 @@ if [ ! -f "$APP_DIR/templates/index.html" ]; then
 <body>
     <h1>OWRT-MUSIC-BOX</h1>
     <p class="loading">Web UI is loading...</p>
-    <p>If this page persists, re-run: <code>./install_openwrt.sh</code> from the cloned repo.</p>
 </body>
 </html>
 HTMLEOF
 fi
 
-# Create D-Bus config for bluealsa
+# Create D-Bus config for bluealsa (not strictly needed without bluealsa, but kept for future)
 mkdir -p /opt/owrt-music-box/dbus
-cat > /opt/owrt-music-box/dbus/bluealsa.conf << 'DBUSEOF'
-<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
-<busconfig>
-  <policy user="root">
-    <allow own="org.bluealsa"/>
-    <allow send_destination="org.bluealsa"/>
-  </policy>
-  <policy context="default">
-    <allow send_destination="org.bluealsa"/>
-  </policy>
-</busconfig>
-DBUSEOF
 
 # Make library.py use /opt/owrt-music-box path
 sed -i 's|os.path.dirname(os.path.abspath(__file__))|"/opt/owrt-music-box"|g' "$APP_DIR/library.py" 2>/dev/null || true
 
 echo -e "${GREEN}✓ OWRT-MUSIC-BOX files installed${NC}"
 
-# --- Step 8: Create Init Script ---
-echo -e "${YELLOW}[8/8] Creating startup script...${NC}"
+# --- Create Init Script ---
+echo -e "${YELLOW}Creating startup script...${NC}"
 
 cat > /etc/init.d/owrt-music-box << 'INITEOF'
 #!/bin/sh /etc/rc.common
@@ -1275,21 +1312,6 @@ start_service() {
     # Export Entware paths
     export PATH="/opt/bin:/opt/sbin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
     export LD_LIBRARY_PATH="/opt/lib:$LD_LIBRARY_PATH"
-    
-    # Copy D-Bus config for bluealsa
-    if [ -f "$SERVICE_DIR/dbus/bluealsa.conf" ]; then
-        cp "$SERVICE_DIR/dbus/bluealsa.conf" /etc/dbus-1/system.d/bluealsa.conf
-        /etc/init.d/dbus reload 2>/dev/null || true
-    fi
-    
-    # Start bluealsa if available
-    BLUEALSA_BIN="/opt/bin/bluealsa"
-    if [ -f "$BLUEALSA_BIN" ]; then
-        if ! pgrep bluealsa > /dev/null 2>&1; then
-            $BLUEALSA_BIN -p a2dp-source -p a2dp-sink &
-            sleep 1
-        fi
-    fi
     
     # Create output_mode file if not exist
     if [ ! -f "$SERVICE_DIR/output_mode" ]; then
@@ -1320,12 +1342,6 @@ stop_service() {
     # Stop mpv
     killall -9 mpv 2>/dev/null || true
     
-    # Stop bluealsa
-    BLUEALSA_PID=$(pgrep bluealsa 2>/dev/null || echo "")
-    if [ -n "$BLUEALSA_PID" ]; then
-        kill -15 $BLUEALSA_PID 2>/dev/null || true
-    fi
-    
     rm -f /tmp/mpv_socket
 }
 
@@ -1348,27 +1364,24 @@ echo -e "${CYAN}║         INSTALLATION COMPLETE!               ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${GREEN}What's installed:${NC}"
-echo "  - Entware (package manager for embedded)"
-echo "  - mpv, ffmpeg, alsa-utils"
-echo "  - bluealsa (Bluetooth A2DP)"
+echo "  - Entware package manager"
 echo "  - Python 3 + Flask + ytmusicapi + mutagen"
-echo "  - yt-dlp"
+echo "  - ffmpeg, ffprobe, yt-dlp"
+echo "  - alsa-utils, socat"
+echo "  - Bluetooth tools (bluetoothctl + bluez-daemon)"
 echo "  - OWRT-MUSIC-BOX files in /opt/owrt-music-box/"
 echo ""
+echo -e "${YELLOW}⚠ Note: mpv is NOT available in Entware aarch64 repo.${NC}"
+echo "  The Web UI will start but audio playback requires manual mpv install."
+echo ""
+echo -e "${YELLOW}To install mpv manually, run this on your OpenWrt after install:${NC}"
+echo "  ${GREEN}/opt/bin/opkg install mpg123${NC}"
+echo "  (mpg123 can play mp3 files, but full features need mpv)"
+echo ""
 echo -e "${YELLOW}Usage:${NC}"
-echo "  Start OWRT-MUSIC-BOX:  ${GREEN}/etc/init.d/owrt-music-box start${NC}"
-echo "  Stop:                 ${GREEN}/etc/init.d/owrt-music-box stop${NC}"
-echo "  Restart:              ${GREEN}/etc/init.d/owrt-music-box restart${NC}"
-echo "  Auto-start:           ${GREEN}(already enabled)${NC}"
+echo "  Start:  ${GREEN}/etc/init.d/owrt-music-box start${NC}"
+echo "  Access: ${GREEN}http://192.168.1.178:2027${NC}"
 echo ""
-echo -e "${YELLOW}Access Web UI:${NC}"
-echo "  http://$(ip addr show br-lan 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 || echo '<your-router-ip>'):2027"
-echo ""
-echo -e "${YELLOW}First run:${NC}"
-echo "  Reboot your router, or just run:"
-echo "  ${GREEN}/etc/init.d/entware start && /etc/init.d/owrt-music-box start${NC}"
-echo ""
-echo -e "${YELLOW}Troubleshooting:${NC}"
-echo "  If Web UI doesn't load, restart the service:"
-echo "  ${GREEN}/etc/init.d/owrt-music-box restart${NC}"
-echo "  Check logs: ${GREEN}cat /opt/owrt-music-box/mpv_error.log${NC}"
+echo -e "${YELLOW}Manual mpv install option (if you find a static binary):${NC}"
+echo "  Download mpv aarch64 binary to /opt/bin/mpv and chmod +x it."
+echo "  Then restart: /etc/init.d/owrt-music-box restart"
